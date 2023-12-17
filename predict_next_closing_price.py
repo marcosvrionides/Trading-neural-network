@@ -9,7 +9,8 @@ import yfinance as yf
 import plotly.graph_objs as go
 
 # Load dataset
-dataset = np.loadtxt('./archive/eurusd_hour.csv', delimiter=',', skiprows=1, usecols=(2, 3, 4, 5))
+dataset = pd.read_csv('./archive/eurusd_hour.csv')
+dataset = dataset[['BO', 'BH', 'BL', 'BC']]
 
 # Choose the number of previous hours (sequence length) to consider
 sequence_length = 36
@@ -17,13 +18,12 @@ sequence_length = 36
 # Prepare input and output data
 X, y = [], []
 
-# Create input-output pairs
 # Create input-output pairs for predicting the price 12 hours later
 target_index = sequence_length + 12  # 12 hours later
 
 for i in range(len(dataset) - target_index - 1):
-    X.append(dataset[i:(i + sequence_length)])  # input is an array of arrays of price data of length = sequence_length
-    y.append(dataset[i + target_index, 3])  # target is the close price 12 hours later
+    X.append(dataset.iloc[i:(i + sequence_length)])  # input is an array of arrays of price data of length = sequence_length
+    y.append(dataset.iloc[i + target_index, 3])  # target is the close price 12 hours later
 
 # Convert to NumPy arrays
 X = np.array(X)
@@ -51,12 +51,9 @@ model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.2)
 # Making predictions on the test set
 predictions = model.predict(X_test).flatten()
 
-# Creating x-axis values corresponding to the number of predictions
-x_values = range(len(predictions))
-
 # Plotting predicted and actual prices against the number of predictions
-plt.plot(x_values, y_test, label='Actual')
-plt.plot(x_values, predictions, label='Predicted')
+plt.plot(y_test, label='Actual')
+plt.plot(predictions, label='Predicted')
 
 plt.title('Predicted vs Actual Closing Prices')
 plt.xlabel('Number of Predictions')
@@ -66,32 +63,33 @@ plt.show()
 
 # Get the live dataset
 live_data = yf.download(tickers = 'USDJPY=X' ,period ='3mo', interval = '1h')
-
 ohlc_data = live_data[['Open', 'High', 'Low', 'Close']]
 ohlc_array = ohlc_data.values
-ohlc_1_to_4 = ohlc_array[:, 0:4]
-live_dataset = np.array(ohlc_1_to_4 / 100)
+live_dataset = np.array(ohlc_array / 100)
 
-actual_values = live_dataset[:, 3]
+target_values = live_dataset[:, 3] # Forth column is the closing price
 
-# Reshape the live dataset to fit the model input shape
+# Predicting on Live Data 12 hours into the future
 live_X = []
+dates = []
 
-for i in range(len(live_dataset) - sequence_length - 1):
-    live_X.append(live_dataset[i:(i + sequence_length)])  # input is an array of arrays of price data of length = sequence_length
+# Predicting 12 hours into the future from the last available data point in the live dataset
+for i in range(len(live_dataset) - sequence_length):
+    dates.append(ohlc_data.index[i + sequence_length])
+    live_X.append(live_dataset[i:(i + sequence_length)])  # Input is an array of arrays of price data of length = sequence_length
 
 live_X = np.array(live_X)
 live_X = np.reshape(live_X, (live_X.shape[0], sequence_length, 4))  # Assuming 4 features (O, H, L, C)
 
-# Predict using the trained model
+# Predict using the trained model for future 12 hours
 live_predictions = model.predict(live_X).flatten()
 
-# Plotting predicted and actual prices on live data
-plt.plot(live_predictions, label='Predicted on Live Data')
-plt.plot(actual_values[sequence_length+1:], label='Actual on Live Data')
+# Plotting predicted and actual prices 12 hours into the future on live data
+plt.plot(dates, live_predictions, label='Predicted 12 Hours in Future on Live Data')
+plt.plot(dates, target_values[sequence_length:], label='Actual on Live Data')
 
-plt.title('Predicted Closing Prices on Live Data')
-plt.xlabel('Interval')
+plt.title('Predicted Closing Prices 12 Hours in Future on Live Data')
+plt.xlabel('Date')
 plt.ylabel('Closing Price')
 plt.legend()
 plt.grid(True, linestyle='-', color='gray', linewidth=0.5)
